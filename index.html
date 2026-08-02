@@ -1,11 +1,9 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PDF Splitter</title>
-    <!-- pdf-lib library for PDF manipulation -->
+    <title>Pro PDF Splitter</title>
     <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
     <style>
         body {
@@ -23,12 +21,9 @@
             border-radius: 15px;
             box-shadow: 0 10px 25px rgba(0,0,0,0.1);
             text-align: center;
-            width: 400px;
+            width: 450px;
         }
-        h2 {
-            color: #333;
-            margin-bottom: 25px;
-        }
+        h2 { color: #333; margin-bottom: 25px; }
         .input-group {
             margin-bottom: 20px;
             text-align: left;
@@ -48,7 +43,7 @@
             font-size: 14px;
         }
         button {
-            background-color: #007bff;
+            background-color: #28a745;
             color: white;
             border: none;
             padding: 15px 20px;
@@ -59,30 +54,40 @@
             font-weight: bold;
             transition: background 0.3s ease;
         }
-        button:hover {
-            background-color: #0056b3;
-        }
+        button:hover { background-color: #218838; }
+        button:disabled { background-color: #ccc; cursor: not-allowed; }
         #status {
             margin-top: 20px;
             font-size: 14px;
             color: #666;
-            font-style: italic;
+            font-weight: 500;
+        }
+        .info-box {
+            background: #e7f3ff;
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+            color: #0056b3;
+            font-size: 14px;
         }
     </style>
 </head>
 <body>
 
     <div class="container">
-        <h2>PDF Splitter</h2>
+        <h2>Pro PDF Splitter</h2>
         
         <div class="input-group">
             <label>Upload PDF File:</label>
             <input type="file" id="pdfInput" accept="application/pdf">
         </div>
 
+        <div id="pageInfo" class="info-box"></div>
+
         <div class="input-group">
-            <label>Number of parts to split:</label>
-            <input type="number" id="pageCount" placeholder="e.g. 14" min="1">
+            <label>Split into how many files?</label>
+            <input type="number" id="splitCountInput" placeholder="e.g. 14" min="1">
         </div>
 
         <button id="splitBtn">Split & Download</button>
@@ -91,56 +96,92 @@
 
     <script>
         const { PDFDocument } = PDFLib;
+        let currentPdfDoc = null;
+        let pdfBytes = null;
+
+        // Step 1: Detect total pages when file is uploaded
+        document.getElementById('pdfInput').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            const infoBox = document.getElementById('pageInfo');
+            const status = document.getElementById('status');
+            
+            if (!file) return;
+
+            status.innerText = "Reading PDF...";
+            try {
+                pdfBytes = await file.arrayBuffer();
+                currentPdfDoc = await PDFDocument.load(pdfBytes);
+                const totalPages = currentPdfDoc.getPageCount();
+                
+                infoBox.style.display = "block";
+                infoBox.innerText = `Total Pages in PDF: ${totalPages}`;
+                status.innerText = "PDF Ready!";
+            } catch (err) {
+                status.innerText = "Error loading PDF.";
+                console.error(err);
+            }
+        });
+
+        // Helper function to create a delay (sleep)
+        const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
         document.getElementById('splitBtn').addEventListener('click', async () => {
-            const fileInput = document.getElementById('pdfInput');
-            const pageCountInput = document.getElementById('pageCount');
+            const splitCountInput = document.getElementById('splitCountInput');
             const status = document.getElementById('status');
+            const btn = document.getElementById('splitBtn');
 
-            // Validation
-            if (fileInput.files.length === 0) {
-                alert("Please upload a PDF file first!");
-                return;
-            }
-            if (!pageCountInput.value || pageCountInput.value <= 0) {
-                alert("Please enter a valid number of parts!");
+            if (!currentPdfDoc) {
+                alert("Please upload a PDF first!");
                 return;
             }
 
-            status.innerText = "Processing... Please wait.";
-            const splitCount = parseInt(pageCountInput.value);
-            const file = fileInput.files[0];
+            const splitCount = parseInt(splitCountInput.value);
+            if (!splitCount || splitCount <= 0) {
+                alert("Please enter a valid number of files!");
+                return;
+            }
+
+            const totalPages = currentPdfDoc.getPageCount();
+            const pagesPerFile = Math.ceil(totalPages / splitCount);
+
+            // Step 2: Final Approval/Confirmation
+            const confirmMsg = `PDF has ${totalPages} pages.\nSplitting into ${splitCount} files.\nEach file will have approx ${pagesPerFile} pages.\n\nDo you want to proceed?`;
             
+            if (!confirm(confirmMsg)) {
+                return;
+            }
+
+            // Disable button to prevent multiple clicks
+            btn.disabled = true;
+
             try {
-                const arrayBuffer = await file.arrayBuffer();
-                const srcDoc = await PDFDocument.load(arrayBuffer);
-                const totalPages = srcDoc.getPageCount();
-
-                // Calculate how many pages should be in each file
-                const pagesPerFile = Math.ceil(totalPages / splitCount);
-
                 for (let i = 0; i < splitCount; i++) {
-                    const newDoc = await PDFDocument.create();
                     const start = i * pagesPerFile;
                     const end = Math.min(start + pagesPerFile, totalPages);
 
                     if (start >= totalPages) break;
 
-                    // Extract page range
+                    status.innerText = `Processing part ${i + 1} of ${splitCount}...`;
+
+                    const newDoc = await PDFDocument.create();
                     const pagesToCopy = Array.from({ length: end - start }, (_, index) => start + index);
-                    const copiedPages = await newDoc.copyPages(srcDoc, pagesToCopy);
+                    const copiedPages = await newDoc.copyPages(currentPdfDoc, pagesToCopy);
                     copiedPages.forEach(page => newDoc.addPage(page));
 
-                    const pdfBytes = await newDoc.save();
+                    const resultBytes = await newDoc.save();
                     
-                    // Trigger download for each part
-                    downloadBlob(pdfBytes, `split_part_${i + 1}.pdf`);
-                }
+                    // Step 3: Controlled Download
+                    downloadBlob(resultBytes, `part_${i + 1}_of_${splitCount}.pdf`);
 
-                status.innerText = "Successfully split and downloaded!";
+                    // Add a 800ms delay between each file to prevent browser from blocking
+                    await sleep(800); 
+                }
+                status.innerText = "All files downloaded successfully!";
             } catch (error) {
                 console.error(error);
-                status.innerText = "Error: Could not process the PDF file.";
+                status.innerText = "An error occurred during splitting.";
+            } finally {
+                btn.disabled = false;
             }
         });
 
@@ -159,4 +200,3 @@
 
 </body>
 </html>
-```
