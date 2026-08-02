@@ -1,0 +1,162 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Splitter</title>
+    <!-- pdf-lib library for PDF manipulation -->
+    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f0f2f5;
+            margin: 0;
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            text-align: center;
+            width: 400px;
+        }
+        h2 {
+            color: #333;
+            margin-bottom: 25px;
+        }
+        .input-group {
+            margin-bottom: 20px;
+            text-align: left;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #555;
+        }
+        input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            box-sizing: border-box;
+            font-size: 14px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 15px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            width: 100%;
+            font-size: 16px;
+            font-weight: bold;
+            transition: background 0.3s ease;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        #status {
+            margin-top: 20px;
+            font-size: 14px;
+            color: #666;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h2>PDF Splitter</h2>
+        
+        <div class="input-group">
+            <label>Upload PDF File:</label>
+            <input type="file" id="pdfInput" accept="application/pdf">
+        </div>
+
+        <div class="input-group">
+            <label>Number of parts to split:</label>
+            <input type="number" id="pageCount" placeholder="e.g. 14" min="1">
+        </div>
+
+        <button id="splitBtn">Split & Download</button>
+        <p id="status"></p>
+    </div>
+
+    <script>
+        const { PDFDocument } = PDFLib;
+
+        document.getElementById('splitBtn').addEventListener('click', async () => {
+            const fileInput = document.getElementById('pdfInput');
+            const pageCountInput = document.getElementById('pageCount');
+            const status = document.getElementById('status');
+
+            // Validation
+            if (fileInput.files.length === 0) {
+                alert("Please upload a PDF file first!");
+                return;
+            }
+            if (!pageCountInput.value || pageCountInput.value <= 0) {
+                alert("Please enter a valid number of parts!");
+                return;
+            }
+
+            status.innerText = "Processing... Please wait.";
+            const splitCount = parseInt(pageCountInput.value);
+            const file = fileInput.files[0];
+            
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const srcDoc = await PDFDocument.load(arrayBuffer);
+                const totalPages = srcDoc.getPageCount();
+
+                // Calculate how many pages should be in each file
+                const pagesPerFile = Math.ceil(totalPages / splitCount);
+
+                for (let i = 0; i < splitCount; i++) {
+                    const newDoc = await PDFDocument.create();
+                    const start = i * pagesPerFile;
+                    const end = Math.min(start + pagesPerFile, totalPages);
+
+                    if (start >= totalPages) break;
+
+                    // Extract page range
+                    const pagesToCopy = Array.from({ length: end - start }, (_, index) => start + index);
+                    const copiedPages = await newDoc.copyPages(srcDoc, pagesToCopy);
+                    copiedPages.forEach(page => newDoc.addPage(page));
+
+                    const pdfBytes = await newDoc.save();
+                    
+                    // Trigger download for each part
+                    downloadBlob(pdfBytes, `split_part_${i + 1}.pdf`);
+                }
+
+                status.innerText = "Successfully split and downloaded!";
+            } catch (error) {
+                console.error(error);
+                status.innerText = "Error: Could not process the PDF file.";
+            }
+        });
+
+        function downloadBlob(data, fileName) {
+            const blob = new Blob([data], { type: 'application/pdf' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        }
+    </script>
+
+</body>
+</html>
+```
